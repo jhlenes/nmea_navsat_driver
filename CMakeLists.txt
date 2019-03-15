@@ -11,6 +11,8 @@ install(PROGRAMS
    scripts/nmea_socket_driver
    scripts/nmea_topic_driver
    scripts/nmea_topic_serial_reader
+   scripts/nmea_tcp_driver
+   scripts/nmea_udp_driver
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

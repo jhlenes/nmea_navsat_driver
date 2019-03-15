@@ -70,7 +70,10 @@ def convert_time(nmea_utc):
     else:
         hours = int(nmea_utc[0:2])
         minutes = int(nmea_utc[2:4])
-        seconds = int(nmea_utc[4:6])
+        if nmea_utc[5] == '.':
+          seconds = int(nmea_utc[4:5])
+        else:
+          seconds = int(nmea_utc[4:6])
         utc_list[3] = hours
         utc_list[4] = minutes
         utc_list[5] = seconds
