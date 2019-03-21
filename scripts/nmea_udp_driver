@@ -2,7 +2,7 @@
 
 # Software License Agreement (BSD License)
 #
-# Copyright (c) 2013, Eric Perko
+# Copyright (c) 2016, Rein Appeldoorn
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -32,45 +32,65 @@
 # ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-import serial
-import socket               # Import socket module
-import rospy
-import os                   #import libraries necessary for running the ifconfigg.sh file
+import socket
 import sys
+
+import rospy
+
 import libnmea_navsat_driver.driver
 
 if __name__ == '__main__':
-    rospy.init_node('nmea_tcp_driver')
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # Create a socket object
-    host = rospy.get_param('~host', 'telemetron')
-    port = rospy.get_param('~port', 2003)
-
-    s.connect((host, port))
-    print "Device Connected"
-    frame_id = libnmea_navsat_driver.driver.RosNMEADriver.get_frame_id()
+    rospy.init_node('nmea_socket_driver')
 
     try:
-      GPS = s.recv(1024)
-      driver = libnmea_navsat_driver.driver.RosNMEADriver()
-      while not rospy.is_shutdown():
-        GPS = s.recv(1024)
-        data = GPS.strip()
-    
-        split = data.split()
-        data = split[0]
-        for el in split:
-          if 'GPGGA' in el:
-            data = el
-            break
-          elif 'RMC' in el:
-            data = el           
-      
+        local_ip = rospy.get_param('~ip', 'telemetron')
+        local_port = rospy.get_param('~port', 2002)
+        buffer_size = rospy.get_param('~buffer_size', 4096)
+        timeout = rospy.get_param('~timeout_sec', 2)
+    except KeyError as e:
+        rospy.logerr("Parameter %s not found" % e)
+        sys.exit(1)
 
+    frame_id = libnmea_navsat_driver.driver.RosNMEADriver.get_frame_id()
+
+    driver = libnmea_navsat_driver.driver.RosNMEADriver()
+
+    # Connection-loop: connect and keep receiving. If receiving fails, reconnect
+    while not rospy.is_shutdown():
         try:
-          driver.add_sentence(data, frame_id)
-        except ValueError as e:
-          rospy.logwarn("Value error, likely due to missing fields in the NMEA message. Error was: %s. Please report this issue at github.com/ros-drivers/nmea_navsat_driver, including a bag file with the NMEA sentences that caused it." % e)
+            # Create a socket
+            socket_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    except rospy.ROSInterruptException:
-      GPS.close #Close GPS socket when done
+            # Connect the socket to the port
+            socket_.connect((local_ip, local_port))
+
+            # Set timeout
+            socket_.settimeout(timeout)
+        except socket.error, exc:
+            rospy.logerr("Caught exception socket.error when setting up socket: %s" % exc)
+            sys.exit(1)
+
+        # recv-loop: When we're connected, keep receiving stuff until that fails
+        while not rospy.is_shutdown():
+            try:
+                data, remote_address = socket_.recvfrom(buffer_size)
+
+                # strip the data
+                data_list = data.strip().split("\r\n")
+
+                for data in data_list:
+
+                    try:
+                        driver.add_sentence(data, frame_id)
+                    except ValueError as e:
+                        rospy.logwarn("Value error, likely due to missing fields in the NMEA message. "
+                                    "Error was: %s. Please report this issue at github.com/ros-drivers/nmea_navsat_driver, "
+                                    "including a bag file with the NMEA sentences that caused it." % e)
+
+            except socket.error, exc:
+                rospy.logerr("Caught exception socket.error during recvfrom: %s" % exc)
+                socket_.close()
+                # This will break out of the recv-loop so we start another iteration of the connection-loop
+                break
+
+        socket_.close()  # Close socket
