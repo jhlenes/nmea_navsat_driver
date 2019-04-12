@@ -211,60 +211,58 @@ class RosNMEADriver(object):
                                              math.cos(data['true_course'])
                 self.vel_pub.publish(current_vel)
 
-        elif 'RMC' in parsed_sentence:
+        elif self.use_RMC and 'RMC' in parsed_sentence:
             data = parsed_sentence['RMC']
+            
+            if data['fix_valid']:
+                current_fix.status.status = NavSatStatus.STATUS_FIX
+            else:
+                current_fix.status.status = NavSatStatus.STATUS_NO_FIX
 
-            # Only publish a fix from RMC if the use_RMC flag is set.
-            if self.use_RMC:
-                if data['fix_valid']:
-                    current_fix.status.status = NavSatStatus.STATUS_FIX
-                else:
-                    current_fix.status.status = NavSatStatus.STATUS_NO_FIX
+            current_fix.status.service = NavSatStatus.SERVICE_GPS
 
-                current_fix.status.service = NavSatStatus.SERVICE_GPS
+            latitude = data['latitude']
+            if data['latitude_direction'] == 'S':
+                latitude = -latitude
+            current_fix.latitude = latitude
 
-                latitude = data['latitude']
-                if data['latitude_direction'] == 'S':
-                    latitude = -latitude
-                current_fix.latitude = latitude
+            longitude = data['longitude']
+            if data['longitude_direction'] == 'W':
+                longitude = -longitude
+            current_fix.longitude = longitude
 
-                longitude = data['longitude']
-                if data['longitude_direction'] == 'W':
-                    longitude = -longitude
-                current_fix.longitude = longitude
+            current_fix.altitude = float('NaN')
+            current_fix.position_covariance_type = \
+                NavSatFix.COVARIANCE_TYPE_UNKNOWN
 
-                current_fix.altitude = float('NaN')
-                current_fix.position_covariance_type = \
-                    NavSatFix.COVARIANCE_TYPE_UNKNOWN
+            self.fix_pub.publish(current_fix)
 
-                self.fix_pub.publish(current_fix)
+            if not math.isnan(data['utc_time']):
+                current_time_ref.time_ref = rospy.Time.from_sec(data['utc_time'])
+                self.time_ref_pub.publish(current_time_ref)
 
-                if not math.isnan(data['utc_time']):
-                    current_time_ref.time_ref = rospy.Time.from_sec(data['utc_time'])
-                    self.time_ref_pub.publish(current_time_ref)
+            if data['fix_valid']:
 
-                if data['fix_valid']:
+                # Publish velocity
+                current_vel = TwistStamped()
+                current_vel.header.stamp = current_time
+                current_vel.header.frame_id = frame_id
+                current_vel.twist.linear.x = data['speed'] * \
+                    math.sin(data['true_course'])
+                current_vel.twist.linear.y = data['speed'] * \
+                    math.cos(data['true_course'])
+                self.vel_pub.publish(current_vel)
 
-                    # Publish velocity
-                    current_vel = TwistStamped()
-                    current_vel.header.stamp = current_time
-                    current_vel.header.frame_id = frame_id
-                    current_vel.twist.linear.x = data['speed'] * \
-                        math.sin(data['true_course'])
-                    current_vel.twist.linear.y = data['speed'] * \
-                        math.cos(data['true_course'])
-                    self.vel_pub.publish(current_vel)
-
-                    # Publish true course
-                    current_heading = QuaternionStamped()
-                    current_heading.header.stamp = current_time
-                    current_heading.header.frame_id = frame_id
-                    q = quaternion_from_euler(0, 0, data['true_course'])
-                    current_heading.quaternion.x = q[0]
-                    current_heading.quaternion.y = q[1]
-                    current_heading.quaternion.z = q[2]
-                    current_heading.quaternion.w = q[3]
-                    self.heading_pub.publish(current_heading)
+                # Publish true course
+                current_heading = QuaternionStamped()
+                current_heading.header.stamp = current_time
+                current_heading.header.frame_id = frame_id
+                q = quaternion_from_euler(0, 0, data['true_course'])
+                current_heading.quaternion.x = q[0]
+                current_heading.quaternion.y = q[1]
+                current_heading.quaternion.z = q[2]
+                current_heading.quaternion.w = q[3]
+                self.heading_pub.publish(current_heading)
         elif 'GST' in parsed_sentence:
             data = parsed_sentence['GST']
 
