@@ -122,7 +122,7 @@ parse_maps = {
         ("longitude", convert_longitude, 5),
         ("longitude_direction", str, 6),
         ("speed", convert_knots_to_mps, 7),
-        ("true_course", safe_float, 8),
+        ("true_course", convert_deg_to_rads, 8),
         ],
     "GST": [
         ("utc_time", convert_time, 1),
